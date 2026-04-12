@@ -13,3 +13,5 @@ endfunction()
 
 # --- Exercises ---
 add_exercise(vecadd)
+add_exercise(matmul)
+target_link_libraries(bench_matmul PRIVATE CUDA::cublas)
