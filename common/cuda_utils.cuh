@@ -22,31 +22,6 @@
         CHECK_CUDA(cudaDeviceSynchronize());                                    \
     } while (0)
 
-// Simple RAII timer using CUDA events (prints elapsed ms on destruction)
-struct CudaTimer {
-    cudaEvent_t start, stop;
-    const char* label;
-
-    CudaTimer(const char* label = "kernel") : label(label) {
-        CHECK_CUDA(cudaEventCreate(&start));
-        CHECK_CUDA(cudaEventCreate(&stop));
-        CHECK_CUDA(cudaEventRecord(start));
-    }
-
-    float stop_and_get_ms() {
-        CHECK_CUDA(cudaEventRecord(stop));
-        CHECK_CUDA(cudaEventSynchronize(stop));
-        float ms = 0;
-        CHECK_CUDA(cudaEventElapsedTime(&ms, start, stop));
-        return ms;
-    }
-
-    ~CudaTimer() {
-        CHECK_CUDA(cudaEventDestroy(start));
-        CHECK_CUDA(cudaEventDestroy(stop));
-    }
-};
-
 // Allocate device memory and copy from host
 template <typename T>
 T* to_device(const T* host_data, size_t count) {

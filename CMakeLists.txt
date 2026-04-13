@@ -1,10 +1,12 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 project(learning-cuda LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_ARCHITECTURES 86)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+find_package(CUDAToolkit REQUIRED)
 
 # Fetch GoogleTest and Google Benchmark
 include(FetchContent)

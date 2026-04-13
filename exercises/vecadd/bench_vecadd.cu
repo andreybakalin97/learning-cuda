@@ -8,6 +8,7 @@
 // Benchmark our kernel
 static void BM_VecAdd_Custom(benchmark::State& state) {
     const int n = state.range(0);
+    const int blockSize = state.range(1);
     thrust::device_vector<float> d_A(n, 1.0f);
     thrust::device_vector<float> d_B(n, 2.0f);
     thrust::device_vector<float> d_C(n);
@@ -15,7 +16,7 @@ static void BM_VecAdd_Custom(benchmark::State& state) {
     for (auto _ : state) {
         vecadd(thrust::raw_pointer_cast(d_A.data()),
                thrust::raw_pointer_cast(d_B.data()),
-               thrust::raw_pointer_cast(d_C.data()), n);
+               thrust::raw_pointer_cast(d_C.data()), n, blockSize);
         CHECK_CUDA(cudaDeviceSynchronize());
     }
 
@@ -39,7 +40,8 @@ static void BM_VecAdd_Thrust(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * 3L * n * sizeof(float));
 }
 
-#define SIZES Arg(1 << 16)->Arg(1 << 20)->Arg(1 << 24)
-
-BENCHMARK(BM_VecAdd_Custom)->SIZES;
-BENCHMARK(BM_VecAdd_Thrust)->SIZES;
+BENCHMARK(BM_VecAdd_Custom)->ArgsProduct({
+    {1 << 16, 1 << 20, 1 << 24},
+    {1, 32, 64, 128, 256}
+});
+BENCHMARK(BM_VecAdd_Thrust)->Arg(1 << 16)->Arg(1 << 20)->Arg(1 << 24);
