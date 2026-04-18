@@ -22,6 +22,22 @@ static void BM_Matmul_Custom_One_Elem(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * 2LL * N * N * N);
 }
 
+static void BM_Matmul_Custom_Tiled(benchmark::State& state) {
+    const int N = state.range(0);
+    thrust::device_vector<float> d_A(N * N, 1.0f);
+    thrust::device_vector<float> d_B(N * N, 1.0f);
+    thrust::device_vector<float> d_C(N * N);
+
+    for (auto _ : state) {
+        matmulTiled(thrust::raw_pointer_cast(d_A.data()),
+               thrust::raw_pointer_cast(d_B.data()),
+               thrust::raw_pointer_cast(d_C.data()), N, N, N);
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
+
+    // 2*N^3 FLOPs for an N×N matrix multiply
+    state.SetItemsProcessed(state.iterations() * 2LL * N * N * N);
+}
 
 // Benchmark cuBLAS (highly optimized library baseline)
 static void BM_Matmul_cuBLAS(benchmark::State& state) {
@@ -57,4 +73,5 @@ static void BM_Matmul_cuBLAS(benchmark::State& state) {
 #define SIZES Arg(256)->Arg(512)->Arg(1024)->Arg(2048)
 
 BENCHMARK(BM_Matmul_Custom_One_Elem)->SIZES;
+BENCHMARK(BM_Matmul_Custom_Tiled)->SIZES;
 BENCHMARK(BM_Matmul_cuBLAS)->SIZES;
