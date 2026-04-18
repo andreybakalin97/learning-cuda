@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <stdio.h>
 
 __global__
 void matmul_kernel_one_elem(const float* A, const float* B, float* C,
@@ -50,7 +51,7 @@ void matmul_kernel_one_col(const float* A, const float* B, float* C,
                           int M, int N, int K) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col < N) {
-        for (int i = 0; i < N; ++i) {
+        for (int i = 0; i < M; ++i) {
             float sum = 0;
             for (int k = 0; k < K; ++k) {
                 sum += A[i * K + k] * B[k * N + col];
@@ -63,5 +64,54 @@ void matmul_kernel_one_col(const float* A, const float* B, float* C,
 inline void matmulOneCol(const float* d_A, const float* d_B, float* d_C,
                           int M, int N, int K) {
     int threadPerBlock = 16;
-    matmul_kernel_one_row<<<(N + threadPerBlock - 1) / threadPerBlock, threadPerBlock>>>(d_A, d_B, d_C, M, N, K);
+    matmul_kernel_one_col<<<(N + threadPerBlock - 1) / threadPerBlock, threadPerBlock>>>(d_A, d_B, d_C, M, N, K);
+}
+
+__global__
+void matmul_kernel_tiled(const float* A, const float* B, float* C,
+                         int M, int N, int K, int tileWidth) {
+    extern __shared__ char block[];
+    float* As = (float*)block;
+    float* Bs = (float*)(block + (tileWidth * tileWidth * sizeof(float)) / 2);
+
+    int tc = threadIdx.x, tr = threadIdx.y;
+    int bc = blockIdx.x, br = blockIdx.y;
+
+    int row = (br * blockDim.y) + tr;
+    int col = (bc * blockDim.x) + tc;
+
+    float sum = 0;
+    int numBlocks = (K + tileWidth - 1) / tileWidth;
+    for (int b = 0; b < numBlocks; ++b) {
+        if (row < M && b * tileWidth + tc < K) {
+            As[tr * tileWidth + tc] = A[row * K + b * tileWidth + tc];
+        } else {
+            As[tr * tileWidth + tc] = 0;
+        }
+        if (b * tileWidth + tr < K && col < N) {
+            Bs[tr * tileWidth + tc] = B[(b * tileWidth + tr) * N + col];
+        } else {
+            Bs[tr * tileWidth + tc] = 0;
+        }
+        __syncthreads();
+        if (row < M && col < N) {
+            for (int k = 0; k < tileWidth; ++k) {
+                sum += As[tr * tileWidth + k] * Bs[k * tileWidth + tc];
+            }
+        }
+        __syncthreads();
+    }
+    if (row < M && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+#include <stdio.h>
+
+inline void matmulTiled(const float* d_A, const float* d_B, float* d_C,
+                          int M, int N, int K) {
+    int tileWidth = 16, sharedSize = tileWidth * tileWidth * sizeof(float);
+    dim3 blockSize((N + tileWidth - 1) / tileWidth, (M + tileWidth - 1) / tileWidth);
+    dim3 threadSize(tileWidth, tileWidth);
+    matmul_kernel_tiled<<<blockSize, threadSize, sharedSize>>>(d_A, d_B, d_C, M, N, K, tileWidth);
 }

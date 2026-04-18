@@ -56,6 +56,42 @@ class MatmulTest : public ::testing::Test {
     }
 };
 
+// Declares test cases shared across all fixtures via X-macro.
+// Each entry: (TestName, M, N, K)
+#define MATMUL_TEST_CASES(F)                                                        \
+    /* tile-aligned square sizes */                                                 \
+    TEST_F(F, Square_Small)         { run_test(32,  32,  32);  }                    \
+    TEST_F(F, Square_Medium)        { run_test(512, 512, 512); }                    \
+    /* all dims tile-aligned, non-square */                                         \
+    TEST_F(F, Rectangular)          { run_test(128, 256, 64);  }                    \
+    TEST_F(F, TallSkinny)           { run_test(256, 16,  64);  }                    \
+    TEST_F(F, WideFat)              { run_test(16,  256, 64);  }                    \
+    /* single-element inner product (K=1): only one tile phase, partial tile */     \
+    TEST_F(F, KEqualsOne)           { run_test(32,  32,  1);   }                    \
+    /* K smaller than tile width: single partial tile along K */                    \
+    TEST_F(F, KSmallerThanTile)     { run_test(32,  32,  8);   }                    \
+    /* only K crosses a tile boundary (32 full + 1 leftover) */                     \
+    TEST_F(F, KBoundary)            { run_test(32,  32,  33);  }                    \
+    /* only M crosses a tile boundary */                                             \
+    TEST_F(F, MBoundary)            { run_test(33,  32,  32);  }                    \
+    /* only N crosses a tile boundary */                                             \
+    TEST_F(F, NBoundary)            { run_test(32,  33,  32);  }                    \
+    /* all three dims have remainder tiles, different remainders */                  \
+    TEST_F(F, AllDimsBoundary)      { run_test(33,  35,  37);  }                    \
+    /* dims just above tile size: 1 full + 1 element partial tile */                \
+    TEST_F(F, JustAboveTile)        { run_test(17,  17,  17);  }                    \
+    /* dims smaller than tile size: single partial tile in every direction */       \
+    TEST_F(F, SmallerThanTile)      { run_test(7,   11,  5);   }                    \
+    /* non-multiple-of-32, non-power-of-2 */                                        \
+    TEST_F(F, NonMultiple32)        { run_test(100, 100, 100); }                    \
+    /* large K to stress many tile phases */                                        \
+    TEST_F(F, LargeK)               { run_test(32,  32,  512); }                    \
+    /* 1×1×1 degenerate */                                                          \
+    TEST_F(F, Tiny)                 { run_test(1,   1,   1);   }                    \
+    /* single output row/col */                                                     \
+    TEST_F(F, SingleRow)            { run_test(1,   64,  64);  }                    \
+    TEST_F(F, SingleCol)            { run_test(64,  1,   64);  }
+
 class MatmulTestOneElem : public MatmulTest {
 protected:
     void run_kernel(const float* d_A, const float* d_B, float* d_C,
@@ -80,17 +116,15 @@ protected:
     }
 };
 
-TEST_F(MatmulTestOneElem, Square_Small)    { run_test(32, 32, 32); }
-TEST_F(MatmulTestOneElem, Square_Medium)   { run_test(512, 512, 512); }
-TEST_F(MatmulTestOneElem, Rectangular)     { run_test(128, 256, 64); }
-TEST_F(MatmulTestOneElem, NonMultiple32)   { run_test(100, 100, 100); }
+class MatmulTestTiled : public MatmulTest {
+protected:
+    void run_kernel(const float* d_A, const float* d_B, float* d_C,
+                              int M, int N, int K) override {
+        matmulTiled(d_A, d_B, d_C, M, N, K);
+    }
+};
 
-TEST_F(MatmulTestOneRow, Square_Small)    { run_test(32, 32, 32); }
-TEST_F(MatmulTestOneRow, Square_Medium)   { run_test(512, 512, 512); }
-TEST_F(MatmulTestOneRow, Rectangular)     { run_test(128, 256, 64); }
-TEST_F(MatmulTestOneRow, NonMultiple32)   { run_test(100, 100, 100); }
-
-TEST_F(MatmulTestOneCol, Square_Small)    { run_test(32, 32, 32); }
-TEST_F(MatmulTestOneCol, Square_Medium)   { run_test(512, 512, 512); }
-TEST_F(MatmulTestOneCol, Rectangular)     { run_test(128, 256, 64); }
-TEST_F(MatmulTestOneCol, NonMultiple32)   { run_test(100, 100, 100); }
+MATMUL_TEST_CASES(MatmulTestOneElem)
+MATMUL_TEST_CASES(MatmulTestOneRow)
+MATMUL_TEST_CASES(MatmulTestOneCol)
+MATMUL_TEST_CASES(MatmulTestTiled)
