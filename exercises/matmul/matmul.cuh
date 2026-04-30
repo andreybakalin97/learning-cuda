@@ -67,12 +67,14 @@ inline void matmulOneCol(const float* d_A, const float* d_B, float* d_C,
     matmul_kernel_one_col<<<(N + threadPerBlock - 1) / threadPerBlock, threadPerBlock>>>(d_A, d_B, d_C, M, N, K);
 }
 
+constexpr int TILE_WIDTH = 16;
+
 __global__
 void matmul_kernel_tiled(const float* A, const float* B, float* C,
-                         int M, int N, int K, int tileWidth) {
-    extern __shared__ char block[];
-    float* As = (float*)block;
-    float* Bs = (float*)(block + tileWidth * tileWidth * sizeof(float));
+                         int M, int N, int K) {
+    __shared__ float block[TILE_WIDTH * TILE_WIDTH * 2];
+    float* As = block;
+    float* Bs = block + TILE_WIDTH * TILE_WIDTH;
 
     int tc = threadIdx.x, tr = threadIdx.y;
     int bc = blockIdx.x, br = blockIdx.y;
@@ -81,21 +83,21 @@ void matmul_kernel_tiled(const float* A, const float* B, float* C,
     int col = (bc * blockDim.x) + tc;
 
     float sum = 0;
-    int numBlocks = (K + tileWidth - 1) / tileWidth;
+    int numBlocks = (K + TILE_WIDTH - 1) / TILE_WIDTH;
     for (int b = 0; b < numBlocks; ++b) {
-        if (row < M && b * tileWidth + tc < K) {
-            As[tr * tileWidth + tc] = A[row * K + b * tileWidth + tc];
+        if (row < M && b * TILE_WIDTH + tc < K) {
+            As[tr * TILE_WIDTH + tc] = A[row * K + b * TILE_WIDTH + tc];
         } else {
-            As[tr * tileWidth + tc] = 0;
+            As[tr * TILE_WIDTH + tc] = 0;
         }
-        if (b * tileWidth + tr < K && col < N) {
-            Bs[tr * tileWidth + tc] = B[(b * tileWidth + tr) * N + col];
+        if (b * TILE_WIDTH + tr < K && col < N) {
+            Bs[tr * TILE_WIDTH + tc] = B[(b * TILE_WIDTH + tr) * N + col];
         } else {
-            Bs[tr * tileWidth + tc] = 0;
+            Bs[tr * TILE_WIDTH + tc] = 0;
         }
         __syncthreads();
-        for (int k = 0; k < tileWidth; ++k) {
-            sum += As[tr * tileWidth + k] * Bs[k * tileWidth + tc];
+        for (int k = 0; k < TILE_WIDTH; ++k) {
+            sum += As[tr * TILE_WIDTH + k] * Bs[k * TILE_WIDTH + tc];
         }
         __syncthreads();
     }
@@ -105,9 +107,8 @@ void matmul_kernel_tiled(const float* A, const float* B, float* C,
 }
 
 inline void matmulTiled(const float* d_A, const float* d_B, float* d_C,
-                          int M, int N, int K, int tileWidth = 16) {
-    int sharedSize = 2 * tileWidth * tileWidth * sizeof(float);
-    dim3 gridSize((N + tileWidth - 1) / tileWidth, (M + tileWidth - 1) / tileWidth);
-    dim3 blockSize(tileWidth, tileWidth);
-    matmul_kernel_tiled<<<gridSize, blockSize, sharedSize>>>(d_A, d_B, d_C, M, N, K, tileWidth);
+                          int M, int N, int K) {
+    dim3 gridSize((N + TILE_WIDTH - 1) / TILE_WIDTH, (M + TILE_WIDTH - 1) / TILE_WIDTH);
+    dim3 blockSize(TILE_WIDTH, TILE_WIDTH);
+    matmul_kernel_tiled<<<gridSize, blockSize>>>(d_A, d_B, d_C, M, N, K);
 }
